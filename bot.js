@@ -761,6 +761,10 @@ function getUserStats(userId) {
 
 // Хранилище текущих вопросов пользователей
 const userCurrentQuestions = {};
+// Хранилище последних отвеченных вопросов (для показа параграфов)
+const userLastAnsweredQuestions = {};
+// Хранилище текущих индексов параграфов для пользователей
+const userParagraphIndices = {};
 // Хранилище таймеров для вопросов (25 секунд)
 const questionTimers = {};
 const QUESTION_TIME_LIMIT = 25000; // 25 секунд в миллисекундах
@@ -992,11 +996,27 @@ bot.on('callback_query', (query) => {
                 }
             }
             break;
+        case 'show_paragraphs':
+            showQuestionParagraphs(chatId, userId);
+            break;
+        case 'next_paragraph':
+            showNextParagraph(chatId, userId);
+            break;
+        case 'prev_paragraph':
+            showPrevParagraph(chatId, userId);
+            break;
         case 'main_menu':
             // Очищаем таймер при выходе в меню
             clearQuestionTimer(userId);
             if (userCurrentQuestions[userId]) {
                 delete userCurrentQuestions[userId];
+            }
+            // Очищаем сохраненные вопросы и индексы параграфов
+            if (userLastAnsweredQuestions[userId]) {
+                delete userLastAnsweredQuestions[userId];
+            }
+            if (userParagraphIndices[userId]) {
+                delete userParagraphIndices[userId];
             }
             const user = users[userId];
             const welcomeText = `👋 Привет, ${user ? (user.firstName || 'друг') : 'друг'}!
@@ -1120,6 +1140,15 @@ bot.on('message', (msg) => {
         }
         responseText += `📅 Осталось сегодня: ${stats.remainingToday} вопросов`;
         
+        // Сохраняем вопрос для возможности показать подробности
+        userLastAnsweredQuestions[userId] = question;
+        userParagraphIndices[userId] = 0; // Сбрасываем индекс параграфа
+        
+        // Проверяем, есть ли параграфы для этого вопроса
+        const hasParagraphs = question.paragraphs_uids && 
+                              question.paragraphs_uids.with_answer && 
+                              question.paragraphs_uids.with_answer.length > 0;
+        
         const keyboard = {
             reply_markup: {
                 inline_keyboard: [
@@ -1128,6 +1157,13 @@ bot.on('message', (msg) => {
                 ]
             }
         };
+        
+        // Добавляем кнопку "Подробнее о вопросе" если есть параграфы
+        if (hasParagraphs) {
+            keyboard.reply_markup.inline_keyboard.push([
+                { text: '📖 Подробнее о вопросе', callback_data: 'show_paragraphs' }
+            ]);
+        }
         
         bot.sendMessage(chatId, responseText, { ...keyboard, parse_mode: 'HTML' });
         delete userCurrentQuestions[userId];
@@ -1204,6 +1240,15 @@ function sendQuestion(chatId, userId) {
             
             const responseText = `⏱️ <b>Время истекло!</b>\n\n❌ Ответ не засчитан.\n\n📊 Правильный ответ: <b>${displayAnswer}</b>`;
             
+            // Сохраняем вопрос для возможности показать подробности
+            userLastAnsweredQuestions[userId] = expiredQuestion;
+            userParagraphIndices[userId] = 0;
+            
+            // Проверяем, есть ли параграфы для этого вопроса
+            const hasParagraphs = expiredQuestion.paragraphs_uids && 
+                                  expiredQuestion.paragraphs_uids.with_answer && 
+                                  expiredQuestion.paragraphs_uids.with_answer.length > 0;
+            
             const keyboard = {
                 reply_markup: {
                     inline_keyboard: [
@@ -1212,6 +1257,13 @@ function sendQuestion(chatId, userId) {
                     ]
                 }
             };
+            
+            // Добавляем кнопку "Подробнее о вопросе" если есть параграфы
+            if (hasParagraphs) {
+                keyboard.reply_markup.inline_keyboard.push([
+                    { text: '📖 Подробнее о вопросе', callback_data: 'show_paragraphs' }
+                ]);
+            }
             
             bot.sendMessage(chatId, responseText, { ...keyboard, parse_mode: 'HTML' });
             
@@ -1310,6 +1362,139 @@ setInterval(() => {
     saveQuestionHistory();
     console.log('💾 Автосохранение данных выполнено');
 }, 5 * 60 * 1000);
+
+// Функции для показа параграфов
+function showQuestionParagraphs(chatId, userId) {
+    const question = userLastAnsweredQuestions[userId];
+    
+    if (!question || !question.paragraphs_uids) {
+        bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
+        return;
+    }
+    
+    const withAnswerUids = question.paragraphs_uids.with_answer || [];
+    
+    if (withAnswerUids.length === 0) {
+        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
+        return;
+    }
+    
+    // Сбрасываем индекс на первый параграф
+    userParagraphIndices[userId] = 0;
+    
+    // Показываем первый параграф
+    showParagraphByIndex(chatId, userId, withAnswerUids, 0);
+}
+
+function showParagraphByIndex(chatId, userId, paraUids, index) {
+    if (index < 0 || index >= paraUids.length) {
+        bot.sendMessage(chatId, '❌ Параграф не найден.');
+        return;
+    }
+    
+    const paraUid = paraUids[index];
+    const paragraph = paragraphsDict[paraUid];
+    
+    if (!paragraph) {
+        bot.sendMessage(chatId, '❌ Параграф не найден в базе данных.');
+        return;
+    }
+    
+    let paraText = paragraph.text;
+    
+    // Ограничиваем длину текста для Telegram (максимум 4000 символов)
+    const MAX_LENGTH = 4000;
+    if (paraText.length > MAX_LENGTH) {
+        paraText = paraText.substring(0, MAX_LENGTH - 3) + '...';
+    }
+    
+    const currentNum = index + 1;
+    const totalNum = paraUids.length;
+    
+    let text = `📖 <b>Подробнее о вопросе</b>\n\n`;
+    text += `<i>Параграф ${currentNum} из ${totalNum}</i>\n\n`;
+    text += paraText;
+    
+    // Формируем клавиатуру с навигацией
+    const keyboard = {
+        reply_markup: {
+            inline_keyboard: []
+        }
+    };
+    
+    // Кнопки навигации
+    const navButtons = [];
+    if (index > 0) {
+        navButtons.push({ text: '⬅️ Назад', callback_data: 'prev_paragraph' });
+    }
+    if (index < paraUids.length - 1) {
+        navButtons.push({ text: '➡️ Вперед', callback_data: 'next_paragraph' });
+    }
+    if (navButtons.length > 0) {
+        keyboard.reply_markup.inline_keyboard.push(navButtons);
+    }
+    
+    // Кнопка возврата
+    keyboard.reply_markup.inline_keyboard.push([
+        { text: '🏠 Выйти в меню', callback_data: 'main_menu' }
+    ]);
+    
+    bot.sendMessage(chatId, text, { ...keyboard, parse_mode: 'HTML' });
+}
+
+function showNextParagraph(chatId, userId) {
+    const question = userLastAnsweredQuestions[userId];
+    
+    if (!question || !question.paragraphs_uids) {
+        bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
+        return;
+    }
+    
+    const withAnswerUids = question.paragraphs_uids.with_answer || [];
+    
+    if (withAnswerUids.length === 0) {
+        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
+        return;
+    }
+    
+    let currentIndex = userParagraphIndices[userId] || 0;
+    currentIndex++;
+    
+    if (currentIndex >= withAnswerUids.length) {
+        bot.sendMessage(chatId, '✅ Это последний параграф.');
+        return;
+    }
+    
+    userParagraphIndices[userId] = currentIndex;
+    showParagraphByIndex(chatId, userId, withAnswerUids, currentIndex);
+}
+
+function showPrevParagraph(chatId, userId) {
+    const question = userLastAnsweredQuestions[userId];
+    
+    if (!question || !question.paragraphs_uids) {
+        bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
+        return;
+    }
+    
+    const withAnswerUids = question.paragraphs_uids.with_answer || [];
+    
+    if (withAnswerUids.length === 0) {
+        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
+        return;
+    }
+    
+    let currentIndex = userParagraphIndices[userId] || 0;
+    currentIndex--;
+    
+    if (currentIndex < 0) {
+        bot.sendMessage(chatId, '✅ Это первый параграф.');
+        return;
+    }
+    
+    userParagraphIndices[userId] = currentIndex;
+    showParagraphByIndex(chatId, userId, withAnswerUids, currentIndex);
+}
 
 // Обработка ошибок
 bot.on('polling_error', (error) => {
