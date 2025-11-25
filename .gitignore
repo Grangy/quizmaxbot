@@ -11,6 +11,8 @@ package-lock.json
 data/
 *.json
 !package.json
+# Allow RuBQ database files
+!RuBQ/**/*.json
 
 # Logs
 *.log
