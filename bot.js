@@ -58,7 +58,28 @@ const MAX_CACHE_SIZE = 1000;
 
 // ========== УЛУЧШЕНИЕ 3: Система рейтинга ==========
 function calculateRating(user) {
-    const baseRating = user.correctAnswers * 10;
+    // Базовый рейтинг зависит от сложности вопросов
+    let baseRating = 0;
+    
+    // Подсчитываем рейтинг на основе сложности отвеченных вопросов
+    if (results[user.id] && results[user.id].length > 0) {
+        results[user.id].forEach(result => {
+            if (result.isCorrect) {
+                // Множители в зависимости от сложности
+                const difficultyMultipliers = {
+                    'easy': 5,      // Легкие вопросы дают меньше рейтинга
+                    'medium': 10,    // Средние - стандартный рейтинг
+                    'hard': 20      // Сложные - в 2 раза больше
+                };
+                const multiplier = difficultyMultipliers[result.difficulty] || 10;
+                baseRating += multiplier;
+            }
+        });
+    } else {
+        // Fallback для старых данных
+        baseRating = user.correctAnswers * 10;
+    }
+    
     const streakBonus = user.bestStreak * 5;
     const accuracyBonus = user.totalQuestions > 0 ? Math.floor((user.correctAnswers / user.totalQuestions) * 100) * 2 : 0;
     return baseRating + streakBonus + accuracyBonus;
@@ -95,7 +116,7 @@ function loadUsers() {
     try {
         if (fs.existsSync(USERS_DB)) {
             users = JSON.parse(fs.readFileSync(USERS_DB, 'utf8'));
-            // Миграция: инициализируем level и experience для существующих пользователей
+            // Миграция: инициализируем level, experience и difficulty для существующих пользователей
             let needsSave = false;
             for (const userId in users) {
                 const user = users[userId];
@@ -109,6 +130,10 @@ function loadUsers() {
                 }
                 if (user.experience === undefined || user.experience === null) {
                     user.experience = 0;
+                    needsSave = true;
+                }
+                if (user.difficulty === undefined || user.difficulty === null) {
+                    user.difficulty = 'all';
                     needsSave = true;
                 }
             }
@@ -405,7 +430,8 @@ function registerUser(msg) {
             lastActiveDate: getToday(),
             favoriteCategory: null,
             level: 1,
-            experience: 0
+            experience: 0,
+            difficulty: 'all' // all, easy, medium, hard
         };
         saveUsers();
     } else {
@@ -468,8 +494,44 @@ function logAnswer(userId, questionId, userAnswer, isCorrect, correctAnswer, cha
 }
 
 // ========== УЛУЧШЕНИЕ 10: Умный выбор вопросов (избегание повторов) ==========
+// Определение сложности вопросов по тегам
+const DIFFICULTY_TAGS = {
+    easy: ['1-hop', '0-hop'], // Простые вопросы
+    medium: ['multi-constraint', 'qualifier-constraint', 'reverse', 'exclusion'], // Средние вопросы
+    hard: ['multi-hop', 'count', 'ranking', 'duration', 'no_answer', 'qualifier-answer'] // Сложные вопросы
+};
+
+function getQuestionDifficulty(question) {
+    if (!question.tags || question.tags.length === 0) {
+        return 'medium'; // По умолчанию средняя сложность
+    }
+    
+    const tags = question.tags;
+    
+    // Проверяем сложные теги
+    if (tags.some(tag => DIFFICULTY_TAGS.hard.includes(tag))) {
+        return 'hard';
+    }
+    
+    // Проверяем средние теги
+    if (tags.some(tag => DIFFICULTY_TAGS.medium.includes(tag))) {
+        return 'medium';
+    }
+    
+    // Проверяем простые теги
+    if (tags.some(tag => DIFFICULTY_TAGS.easy.includes(tag))) {
+        return 'easy';
+    }
+    
+    return 'medium'; // По умолчанию
+}
+
 function getRandomQuestion(userId) {
     if (questions.length === 0) return null;
+    
+    // Получаем настройку сложности пользователя
+    const user = users[userId];
+    const difficulty = (user && user.difficulty) || 'all'; // all, easy, medium, hard
     
     // Получаем историю вопросов пользователя
     if (!questionHistory[userId]) {
@@ -478,9 +540,36 @@ function getRandomQuestion(userId) {
     
     // Фильтруем уже заданные вопросы (последние 50)
     const recentQuestions = questionHistory[userId].slice(-50);
-    const availableQuestions = questions.filter(q => !recentQuestions.includes(q.uid));
+    let availableQuestions = questions.filter(q => !recentQuestions.includes(q.uid));
     
+    // Фильтруем по сложности, если не "all"
+    if (difficulty !== 'all') {
+        availableQuestions = availableQuestions.filter(q => {
+            const qDifficulty = getQuestionDifficulty(q);
+            return qDifficulty === difficulty;
+        });
+    }
+    
+    // Если после фильтрации нет вопросов, используем все доступные
     const questionPool = availableQuestions.length > 0 ? availableQuestions : questions;
+    
+    // Если все еще нет вопросов, сбрасываем фильтр по истории
+    if (questionPool.length === 0) {
+        const allQuestions = difficulty !== 'all' 
+            ? questions.filter(q => getQuestionDifficulty(q) === difficulty)
+            : questions;
+        const question = allQuestions[Math.floor(Math.random() * allQuestions.length)];
+        if (question) {
+            questionHistory[userId].push(question.uid);
+            if (questionHistory[userId].length > 100) {
+                questionHistory[userId] = questionHistory[userId].slice(-100);
+            }
+            saveQuestionHistory();
+            return question;
+        }
+        return null;
+    }
+    
     const question = questionPool[Math.floor(Math.random() * questionPool.length)];
     
     // Добавляем в историю
@@ -600,7 +689,7 @@ function getExpForLevel(level) {
     return level * 100;
 }
 
-function addExperience(userId, isCorrect) {
+function addExperience(userId, isCorrect, questionDifficulty = 'medium') {
     const user = users[userId];
     if (!user) return false;
     
@@ -619,7 +708,15 @@ function addExperience(userId, isCorrect) {
         user.level = 1;
     }
     
-    const expGain = isCorrect ? 10 : 2;
+    // Опыт зависит от сложности вопроса
+    const difficultyExpMultipliers = {
+        'easy': { correct: 5, incorrect: 1 },      // Легкие дают меньше опыта
+        'medium': { correct: 10, incorrect: 2 },  // Средние - стандартный опыт
+        'hard': { correct: 20, incorrect: 4 }     // Сложные - в 2 раза больше
+    };
+    
+    const multipliers = difficultyExpMultipliers[questionDifficulty] || difficultyExpMultipliers['medium'];
+    const expGain = isCorrect ? multipliers.correct : multipliers.incorrect;
     user.experience += expGain;
     
     const expForNextLevel = getExpForLevel(user.level);
@@ -635,13 +732,16 @@ function addExperience(userId, isCorrect) {
     return false;
 }
 
-function updateUserStats(userId, isCorrect, chatId) {
-    if (!users[userId]) return;
+function updateUserStats(userId, isCorrect, chatId, question = null) {
+    if (!users[userId]) return false;
     
     const user = users[userId];
     user.totalQuestions++;
     
-    const leveledUp = addExperience(userId, isCorrect);
+    // Определяем сложность вопроса
+    const questionDifficulty = question ? getQuestionDifficulty(question) : 'medium';
+    
+    const leveledUp = addExperience(userId, isCorrect, questionDifficulty);
     
     if (isCorrect) {
         user.correctAnswers++;
@@ -664,9 +764,13 @@ function updateUserStats(userId, isCorrect, chatId) {
         date: new Date().toISOString(),
         isCorrect,
         questionId: user.currentQuestionId,
-        chatId
+        chatId,
+        difficulty: questionDifficulty // Сохраняем сложность вопроса
     });
     saveResults();
+    
+    return { leveledUp, difficulty: questionDifficulty };
+}
     
     // ========== УЛУЧШЕНИЕ 12: Обновление статистики группы ==========
     if (chatId < 0 && groups[chatId]) {
@@ -860,7 +964,13 @@ bot.onText(/\/start/, (msg) => {
 /top - Топ игроков
 /stats - Твоя статистика
 /achievements - Достижения
+/difficulty - Настроить сложность
 /help - Помощь
+
+💡 <b>Система сложности:</b>
+🟢 Легкие вопросы дают меньше опыта и рейтинга
+🟡 Средние вопросы - стандартные награды
+🔴 Сложные вопросы дают в 2 раза больше!
 
 Готов начать? Нажми кнопку ниже! 👇`;
     
@@ -903,6 +1013,41 @@ bot.onText(/\/stats/, (msg) => {
     showUserStats(chatId, userId);
 });
 
+// Команда /difficulty - настройка сложности вопросов
+bot.onText(/\/difficulty/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    registerUser(msg);
+    
+    const user = users[userId];
+    const currentDifficulty = user.difficulty || 'all';
+    
+    const difficultyNames = {
+        'all': '🌐 Все вопросы',
+        'easy': '🟢 Легкие (1-hop, 0-hop)',
+        'medium': '🟡 Средние (multi-constraint, reverse и др.)',
+        'hard': '🔴 Сложные (multi-hop, count, ranking и др.)'
+    };
+    
+    const text = `⚙️ <b>Настройка сложности вопросов</b>\n\n` +
+        `Текущий уровень: <b>${difficultyNames[currentDifficulty]}</b>\n\n` +
+        `Выберите уровень сложности:`;
+    
+    const keyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: currentDifficulty === 'all' ? '✅ ' : '' + difficultyNames['all'], callback_data: 'set_difficulty_all' }],
+                [{ text: currentDifficulty === 'easy' ? '✅ ' : '' + difficultyNames['easy'], callback_data: 'set_difficulty_easy' }],
+                [{ text: currentDifficulty === 'medium' ? '✅ ' : '' + difficultyNames['medium'], callback_data: 'set_difficulty_medium' }],
+                [{ text: currentDifficulty === 'hard' ? '✅ ' : '' + difficultyNames['hard'], callback_data: 'set_difficulty_hard' }],
+                [{ text: '🏠 Выйти в меню', callback_data: 'main_menu' }]
+            ]
+        }
+    };
+    
+    bot.sendMessage(chatId, text, { ...keyboard, parse_mode: 'HTML' });
+});
+
 // Команда /help
 bot.onText(/\/help/, (msg) => {
     const chatId = msg.chat.id;
@@ -914,6 +1059,7 @@ bot.onText(/\/help/, (msg) => {
 /top - Посмотреть топ игроков
 /stats - Ваша статистика
 /achievements - Ваши достижения
+/difficulty - Настроить сложность вопросов
 /groupstats - Статистика группы (только в группах)
 /help - Эта справка
 
@@ -922,6 +1068,14 @@ bot.onText(/\/help/, (msg) => {
 • Ответы проверяются автоматически
 • Ваша статистика сохраняется
 • Зарабатывайте опыт и повышайте уровень!
+• Используйте /difficulty для выбора уровня сложности
+
+<b>Система наград по сложности:</b>
+🟢 <b>Легкие вопросы:</b> +5 опыта (правильно), +5 рейтинга
+🟡 <b>Средние вопросы:</b> +10 опыта (правильно), +10 рейтинга
+🔴 <b>Сложные вопросы:</b> +20 опыта (правильно), +20 рейтинга
+
+<i>Сложные вопросы дают в 2 раза больше наград!</i>
 
 <b>Управление:</b>
 Используйте кнопки под сообщениями для навигации.
@@ -1004,6 +1158,54 @@ bot.on('callback_query', (query) => {
             break;
         case 'prev_paragraph':
             showPrevParagraph(chatId, userId);
+            break;
+        case 'set_difficulty_menu':
+            const user = users[userId];
+            const currentDiff = user.difficulty || 'all';
+            
+            const diffNames = {
+                'all': '🌐 Все вопросы',
+                'easy': '🟢 Легкие (1-hop, 0-hop)',
+                'medium': '🟡 Средние (multi-constraint, reverse и др.)',
+                'hard': '🔴 Сложные (multi-hop, count, ranking и др.)'
+            };
+            
+            const text = `⚙️ <b>Настройка сложности вопросов</b>\n\n` +
+                `Текущий уровень: <b>${diffNames[currentDiff]}</b>\n\n` +
+                `Выберите уровень сложности:`;
+            
+            const keyboard = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: (currentDiff === 'all' ? '✅ ' : '') + diffNames['all'], callback_data: 'set_difficulty_all' }],
+                        [{ text: (currentDiff === 'easy' ? '✅ ' : '') + diffNames['easy'], callback_data: 'set_difficulty_easy' }],
+                        [{ text: (currentDiff === 'medium' ? '✅ ' : '') + diffNames['medium'], callback_data: 'set_difficulty_medium' }],
+                        [{ text: (currentDiff === 'hard' ? '✅ ' : '') + diffNames['hard'], callback_data: 'set_difficulty_hard' }],
+                        [{ text: '🏠 Выйти в меню', callback_data: 'main_menu' }]
+                    ]
+                }
+            };
+            
+            bot.sendMessage(chatId, text, { ...keyboard, parse_mode: 'HTML' });
+            break;
+        case 'set_difficulty_all':
+        case 'set_difficulty_easy':
+        case 'set_difficulty_medium':
+        case 'set_difficulty_hard':
+            const difficulty = data.replace('set_difficulty_', '');
+            if (users[userId]) {
+                users[userId].difficulty = difficulty;
+                saveUsers();
+                
+                const difficultyNames = {
+                    'all': '🌐 Все вопросы',
+                    'easy': '🟢 Легкие',
+                    'medium': '🟡 Средние',
+                    'hard': '🔴 Сложные'
+                };
+                
+                bot.sendMessage(chatId, `✅ Уровень сложности изменен на: <b>${difficultyNames[difficulty]}</b>\n\nТеперь вам будут предлагаться вопросы выбранного уровня сложности.`, { parse_mode: 'HTML' });
+            }
             break;
         case 'main_menu':
             // Очищаем таймер при выходе в меню
@@ -1093,17 +1295,50 @@ bot.on('message', (msg) => {
         const result = checkAnswer(question, text);
         
         incrementDailyCount(userId);
-        const leveledUp = updateUserStats(userId, result.isCorrect, chatId);
+        const updateResult = updateUserStats(userId, result.isCorrect, chatId, question);
+        const leveledUp = updateResult.leveledUp;
+        const questionDifficulty = updateResult.difficulty;
         logAnswer(userId, question.uid, text, result.isCorrect, result.correctAnswer, chatId);
         
         // ========== УЛУЧШЕНИЕ 16: Проверка достижений ==========
         const newAchievements = checkAchievements(userId);
+        
+        // Определяем полученный опыт и рейтинг
+        const difficultyExpMultipliers = {
+            'easy': { correct: 5, incorrect: 1 },
+            'medium': { correct: 10, incorrect: 2 },
+            'hard': { correct: 20, incorrect: 4 }
+        };
+        const multipliers = difficultyExpMultipliers[questionDifficulty] || difficultyExpMultipliers['medium'];
+        const expGained = result.isCorrect ? multipliers.correct : multipliers.incorrect;
+        
+        const difficultyRatingMultipliers = {
+            'easy': 5,
+            'medium': 10,
+            'hard': 20
+        };
+        const ratingGained = result.isCorrect ? difficultyRatingMultipliers[questionDifficulty] || 10 : 0;
+        
+        const difficultyNames = {
+            'easy': '🟢 Легкий',
+            'medium': '🟡 Средний',
+            'hard': '🔴 Сложный'
+        };
         
         let responseText = '';
         if (result.isCorrect) {
             responseText = `✅ <b>Правильно!</b>\n\n🎉 Отличная работа!\n\n📊 Правильный ответ: <b>${result.correctAnswer}</b>`;
         } else {
             responseText = `❌ <b>Неправильно</b>\n\n😔 Попробуйте еще раз!\n\n📊 Правильный ответ: <b>${result.correctAnswer}</b>`;
+        }
+        
+        // Показываем информацию о сложности и наградах
+        responseText += `\n\n📊 <b>Сложность вопроса:</b> ${difficultyNames[questionDifficulty]}`;
+        if (result.isCorrect) {
+            responseText += `\n💎 Получено опыта: <b>+${expGained}</b>`;
+            responseText += `\n🏆 Получено рейтинга: <b>+${ratingGained}</b>`;
+        } else {
+            responseText += `\n💎 Получено опыта: <b>+${expGained}</b> (за попытку)`;
         }
         
         // ========== УЛУЧШЕНИЕ 17: Уведомление о повышении уровня ==========
@@ -1238,11 +1473,39 @@ function sendQuestion(chatId, userId) {
                 }
             }
             
-            const responseText = `⏱️ <b>Время истекло!</b>\n\n❌ Ответ не засчитан.\n\n📊 Правильный ответ: <b>${displayAnswer}</b>`;
+            // Определяем сложность вопроса
+            const questionDifficulty = getQuestionDifficulty(expiredQuestion);
+            const difficultyNames = {
+                'easy': '🟢 Легкий',
+                'medium': '🟡 Средний',
+                'hard': '🔴 Сложный'
+            };
+            
+            let responseText = `⏱️ <b>Время истекло!</b>\n\n❌ Ответ не засчитан.\n\n📊 Правильный ответ: <b>${displayAnswer}</b>`;
+            responseText += `\n\n📊 <b>Сложность вопроса:</b> ${difficultyNames[questionDifficulty]}`;
+            responseText += `\n⏱️ Время истекло - опыт и рейтинг не начислены`;
             
             // Сохраняем вопрос для возможности показать подробности
             userLastAnsweredQuestions[userId] = expiredQuestion;
             userParagraphIndices[userId] = 0;
+            
+            // Сохраняем результат с учетом сложности (но без награды, так как время истекло)
+            if (users[userId]) {
+                users[userId].totalQuestions++;
+                if (!results[userId]) {
+                    results[userId] = [];
+                }
+                results[userId].push({
+                    date: new Date().toISOString(),
+                    isCorrect: false,
+                    questionId: expiredQuestion.uid,
+                    chatId,
+                    difficulty: questionDifficulty,
+                    timeout: true
+                });
+                saveResults();
+                saveUsers();
+            }
             
             // Проверяем, есть ли параграфы для этого вопроса
             const hasParagraphs = expiredQuestion.paragraphs_uids && 
@@ -1289,6 +1552,15 @@ function showUserStats(chatId, userId) {
         levelText += `\n💎 Опыт: ${stats.experience}`;
     }
     
+    const user = users[userId];
+    const difficulty = user.difficulty || 'all';
+    const difficultyNames = {
+        'all': '🌐 Все',
+        'easy': '🟢 Легкие',
+        'medium': '🟡 Средние',
+        'hard': '🔴 Сложные'
+    };
+    
     const statsText = `📊 <b>Ваша статистика</b>\n\n` +
         `👤 Имя: ${stats.name}\n` +
         `${levelText}\n` +
@@ -1301,13 +1573,19 @@ function showUserStats(chatId, userId) {
         `📅 Сегодня решено: ${stats.todayQuestions}/30\n` +
         `⏰ Осталось сегодня: ${stats.remainingToday} вопросов\n` +
         `📆 Дней подряд: ${stats.consecutiveDays}\n` +
-        `🎖️ Достижений: ${stats.achievements.length}`;
+        `🎖️ Достижений: ${stats.achievements.length}\n` +
+        `⚙️ Сложность: ${difficultyNames[difficulty]}\n\n` +
+        `💡 <b>Система наград:</b>\n` +
+        `🟢 Легкие: +5 опыта, +5 рейтинга\n` +
+        `🟡 Средние: +10 опыта, +10 рейтинга\n` +
+        `🔴 Сложные: +20 опыта, +20 рейтинга`;
     
     const keyboard = {
         reply_markup: {
             inline_keyboard: [
                 [{ text: '🎯 Новый вопрос', callback_data: 'new_question' }],
                 [{ text: '🏆 Топ игроков', callback_data: 'top_players' }, { text: '🎖️ Достижения', callback_data: 'my_achievements' }],
+                [{ text: '⚙️ Настроить сложность', callback_data: 'set_difficulty_menu' }],
                 [{ text: '🏠 Выйти в меню', callback_data: 'main_menu' }]
             ]
         }
