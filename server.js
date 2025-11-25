@@ -13,6 +13,24 @@ const DATA_DIR = path.join(__dirname, 'RuBQ', 'RuBQ_2.0');
 let questions = [];
 let paragraphsDict = {};
 
+// Определение сложности вопросов по тегам (та же логика, что и в боте)
+const DIFFICULTY_TAGS = {
+    easy: ['1-hop', '0-hop'], // Простые вопросы
+    medium: ['multi-constraint', 'qualifier-constraint', 'reverse', 'exclusion'], // Средние вопросы
+    hard: ['multi-hop', 'count', 'ranking', 'duration', 'no_answer', 'qualifier-answer'] // Сложные вопросы
+};
+
+function getQuestionDifficulty(question) {
+    if (!question.tags || question.tags.length === 0) {
+        return 'medium';
+    }
+    const tags = question.tags;
+    if (tags.some(tag => DIFFICULTY_TAGS.hard.includes(tag))) return 'hard';
+    if (tags.some(tag => DIFFICULTY_TAGS.medium.includes(tag))) return 'medium';
+    if (tags.some(tag => DIFFICULTY_TAGS.easy.includes(tag))) return 'easy';
+    return 'medium';
+}
+
 function loadQuestions() {
     /** Загружает вопросы из тестового файла */
     const questionsFile = path.join(DATA_DIR, 'RuBQ_2.0_test.json');
@@ -56,13 +74,28 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Получить случайный вопрос
+// Получить случайный вопрос (с optional фильтром по сложности: ?difficulty=easy|medium|hard|all)
 app.get('/api/question/random', (req, res) => {
     if (questions.length === 0) {
         return res.status(500).json({ error: 'Вопросы не загружены' });
     }
     
-    const question = questions[Math.floor(Math.random() * questions.length)];
+    const difficulty = (req.query.difficulty || 'all').toLowerCase();
+    let pool = questions;
+    
+    if (['easy', 'medium', 'hard'].includes(difficulty)) {
+        const filtered = questions.filter(q => getQuestionDifficulty(q) === difficulty);
+        // Если в датасете есть вопросы такой сложности — используем только их
+        if (filtered.length > 0) {
+            pool = filtered;
+        }
+    }
+    
+    if (pool.length === 0) {
+        return res.status(500).json({ error: 'Нет доступных вопросов для заданной сложности' });
+    }
+    
+    const question = pool[Math.floor(Math.random() * pool.length)];
     
     // Подготавливаем ответ для клиента (без правильных ответов)
     const questionData = {

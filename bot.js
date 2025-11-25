@@ -542,7 +542,7 @@ function getRandomQuestion(userId) {
     const recentQuestions = questionHistory[userId].slice(-50);
     let availableQuestions = questions.filter(q => !recentQuestions.includes(q.uid));
     
-    // Фильтруем по сложности, если не "all"
+    // Всегда строго фильтруем по выбранной сложности, если не "all"
     if (difficulty !== 'all') {
         availableQuestions = availableQuestions.filter(q => {
             const qDifficulty = getQuestionDifficulty(q);
@@ -550,23 +550,28 @@ function getRandomQuestion(userId) {
         });
     }
     
-    // Если после фильтрации нет вопросов, используем все доступные
-    const questionPool = availableQuestions.length > 0 ? availableQuestions : questions;
+    let questionPool = availableQuestions;
     
-    // Если все еще нет вопросов, сбрасываем фильтр по истории
+    // Если после фильтрации по истории нет вопросов, пробуем взять любые
+    // вопросы нужной сложности (с возможными повторами)
     if (questionPool.length === 0) {
-        const allQuestions = difficulty !== 'all' 
-            ? questions.filter(q => getQuestionDifficulty(q) === difficulty)
-            : questions;
-        const question = allQuestions[Math.floor(Math.random() * allQuestions.length)];
-        if (question) {
-            questionHistory[userId].push(question.uid);
-            if (questionHistory[userId].length > 100) {
-                questionHistory[userId] = questionHistory[userId].slice(-100);
+        if (difficulty !== 'all') {
+            const sameDifficultyQuestions = questions.filter(
+                q => getQuestionDifficulty(q) === difficulty
+            );
+            // Если в датасете вообще нет вопросов такой сложности, только тогда
+            // позволяем вернуться к "all", иначе — строго держим уровень
+            if (sameDifficultyQuestions.length > 0) {
+                questionPool = sameDifficultyQuestions;
+            } else {
+                questionPool = questions;
             }
-            saveQuestionHistory();
-            return question;
+        } else {
+            questionPool = questions;
         }
+    }
+    
+    if (questionPool.length === 0) {
         return null;
     }
     
