@@ -163,10 +163,50 @@ function loadLogs() {
 
 function saveLogs() {
     try {
-        if (logs.length > 10000) {
-            logs = logs.slice(-10000);
+        const MAX_LOG_SIZE_MB = 5;
+        const MAX_LOG_SIZE_BYTES = MAX_LOG_SIZE_MB * 1024 * 1024; // 5 МБ в байтах
+        
+        // Сначала пробуем сохранить текущие логи
+        let jsonString = JSON.stringify(logs, null, 2);
+        let fileSize = Buffer.byteLength(jsonString, 'utf8');
+        
+        // Если размер превышает лимит, удаляем старые записи
+        while (fileSize > MAX_LOG_SIZE_BYTES && logs.length > 0) {
+            // Удаляем 10% самых старых записей
+            const removeCount = Math.max(1, Math.floor(logs.length * 0.1));
+            logs = logs.slice(removeCount);
+            
+            // Пересчитываем размер
+            jsonString = JSON.stringify(logs, null, 2);
+            fileSize = Buffer.byteLength(jsonString, 'utf8');
         }
-        fs.writeFileSync(LOGS_DB, JSON.stringify(logs, null, 2), 'utf8');
+        
+        // Дополнительная проверка: если всё ещё слишком большой, оставляем только последние 5000 записей
+        if (fileSize > MAX_LOG_SIZE_BYTES && logs.length > 5000) {
+            logs = logs.slice(-5000);
+            jsonString = JSON.stringify(logs, null, 2);
+            fileSize = Buffer.byteLength(jsonString, 'utf8');
+        }
+        
+        // Если всё ещё слишком большой, используем компактный формат (без отступов)
+        if (fileSize > MAX_LOG_SIZE_BYTES) {
+            jsonString = JSON.stringify(logs);
+            fileSize = Buffer.byteLength(jsonString, 'utf8');
+            
+            // Если и это не помогло, удаляем записи до нужного размера
+            while (fileSize > MAX_LOG_SIZE_BYTES && logs.length > 0) {
+                logs = logs.slice(1); // Удаляем самую старую запись
+                jsonString = JSON.stringify(logs);
+                fileSize = Buffer.byteLength(jsonString, 'utf8');
+            }
+        }
+        
+        fs.writeFileSync(LOGS_DB, jsonString, 'utf8');
+        
+        // Логируем информацию о размере (только если размер близок к лимиту)
+        if (fileSize > MAX_LOG_SIZE_BYTES * 0.8) {
+            console.log(`⚠️ Размер логов: ${(fileSize / 1024 / 1024).toFixed(2)} МБ (лимит: ${MAX_LOG_SIZE_MB} МБ)`);
+        }
     } catch (error) {
         console.error('Ошибка сохранения логов:', error.message);
     }
