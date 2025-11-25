@@ -769,9 +769,6 @@ function updateUserStats(userId, isCorrect, chatId, question = null) {
     });
     saveResults();
     
-    return { leveledUp, difficulty: questionDifficulty };
-}
-    
     // ========== УЛУЧШЕНИЕ 12: Обновление статистики группы ==========
     if (chatId < 0 && groups[chatId]) {
         groups[chatId].totalQuestions++;
@@ -785,7 +782,7 @@ function updateUserStats(userId, isCorrect, chatId, question = null) {
         saveGroups();
     }
     
-    return leveledUp;
+    return { leveledUp, difficulty: questionDifficulty };
 }
 
 function getTopUsers(limit = 10, sortBy = 'rating') {
@@ -1095,20 +1092,23 @@ bot.on('callback_query', (query) => {
     bot.answerCallbackQuery(query.id);
     
     switch (data) {
-        case 'new_question':
+        case 'new_question': {
             if (!canAnswerMore(userId)) {
                 bot.sendMessage(chatId, `❌ Вы уже ответили на 30 вопросов сегодня!\n\n🕐 Лимит обновится завтра.`);
                 return;
             }
             sendQuestion(chatId, userId);
             break;
-        case 'my_stats':
+        }
+        case 'my_stats': {
             showUserStats(chatId, userId);
             break;
-        case 'top_players':
+        }
+        case 'top_players': {
             showTopPlayers(chatId);
             break;
-        case 'my_achievements':
+        }
+        case 'my_achievements': {
             const userAchievements = achievements[userId] || [];
             if (userAchievements.length === 0) {
                 bot.sendMessage(chatId, '🎖️ У вас пока нет достижений. Продолжайте играть!');
@@ -1123,10 +1123,12 @@ bot.on('callback_query', (query) => {
                 bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
             }
             break;
-        case 'help':
+        }
+        case 'help': {
             bot.sendMessage(chatId, `📖 <b>Помощь</b>\n\nИспользуйте кнопки для управления ботом.`, { parse_mode: 'HTML' });
             break;
-        case 'skip_question':
+        }
+        case 'skip_question': {
             // Очищаем таймер при пропуске вопроса
             clearQuestionTimer(userId);
             if (userCurrentQuestions[userId]) {
@@ -1138,7 +1140,8 @@ bot.on('callback_query', (query) => {
             }
             sendQuestion(chatId, userId);
             break;
-        case 'show_hint':
+        }
+        case 'show_hint': {
             const question = userCurrentQuestions[userId];
             if (question && question.paragraphs_uids) {
                 const paraUids = question.paragraphs_uids.value || [];
@@ -1150,18 +1153,22 @@ bot.on('callback_query', (query) => {
                 }
             }
             break;
-        case 'show_paragraphs':
+        }
+        case 'show_paragraphs': {
             showQuestionParagraphs(chatId, userId);
             break;
-        case 'next_paragraph':
+        }
+        case 'next_paragraph': {
             showNextParagraph(chatId, userId);
             break;
-        case 'prev_paragraph':
+        }
+        case 'prev_paragraph': {
             showPrevParagraph(chatId, userId);
             break;
-        case 'set_difficulty_menu':
-            const user = users[userId];
-            const currentDiff = user.difficulty || 'all';
+        }
+        case 'set_difficulty_menu': {
+            const userForDifficulty = users[userId];
+            const currentDiff = userForDifficulty ? (userForDifficulty.difficulty || 'all') : 'all';
             
             const diffNames = {
                 'all': '🌐 Все вопросы',
@@ -1188,10 +1195,11 @@ bot.on('callback_query', (query) => {
             
             bot.sendMessage(chatId, text, { ...keyboard, parse_mode: 'HTML' });
             break;
+        }
         case 'set_difficulty_all':
         case 'set_difficulty_easy':
         case 'set_difficulty_medium':
-        case 'set_difficulty_hard':
+        case 'set_difficulty_hard': {
             const difficulty = data.replace('set_difficulty_', '');
             if (users[userId]) {
                 users[userId].difficulty = difficulty;
@@ -1207,7 +1215,8 @@ bot.on('callback_query', (query) => {
                 bot.sendMessage(chatId, `✅ Уровень сложности изменен на: <b>${difficultyNames[difficulty]}</b>\n\nТеперь вам будут предлагаться вопросы выбранного уровня сложности.`, { parse_mode: 'HTML' });
             }
             break;
-        case 'main_menu':
+        }
+        case 'main_menu': {
             // Очищаем таймер при выходе в меню
             clearQuestionTimer(userId);
             if (userCurrentQuestions[userId]) {
@@ -1220,8 +1229,8 @@ bot.on('callback_query', (query) => {
             if (userParagraphIndices[userId]) {
                 delete userParagraphIndices[userId];
             }
-            const user = users[userId];
-            const welcomeText = `👋 Привет, ${user ? (user.firstName || 'друг') : 'друг'}!
+            const userForMenu = users[userId];
+            const welcomeText = `👋 Привет, ${userForMenu ? (userForMenu.firstName || 'друг') : 'друг'}!
 
 🎯 Я бот для викторины RuBQ 2.0!
 
@@ -1250,6 +1259,7 @@ bot.on('callback_query', (query) => {
             
             bot.sendMessage(chatId, welcomeText, keyboard);
             break;
+        }
     }
 });
 
