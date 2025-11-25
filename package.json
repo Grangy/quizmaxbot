@@ -1,0 +1,26 @@
+{
+  "name": "rubq-quiz-bot",
+  "version": "2.0.0",
+  "description": "Telegram бот для викторины RuBQ 2.0 с расширенным функционалом",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js",
+    "web": "node server.js"
+  },
+  "keywords": [
+    "quiz",
+    "rubq",
+    "telegram-bot",
+    "question-answering"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "node-telegram-bot-api": "^0.64.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
+

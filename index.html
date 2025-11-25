@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RuBQ Quiz Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-8 fade-in">
+            <h1 class="text-5xl font-bold text-indigo-800 mb-2">RuBQ Quiz Bot</h1>
+            <p class="text-gray-600 text-lg">Тестовый бот для вопросов из RuBQ 2.0</p>
+        </div>
+
+        <!-- Stats Card -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6 fade-in">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-gray-600">Счет</p>
+                    <p class="text-3xl font-bold text-indigo-600" id="score">0</p>
+                </div>
+                <div>
+                    <p class="text-gray-600">Вопросов пройдено</p>
+                    <p class="text-3xl font-bold text-indigo-600" id="total">0</p>
+                </div>
+                <div>
+                    <p class="text-gray-600">Точность</p>
+                    <p class="text-3xl font-bold text-indigo-600" id="accuracy">0%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Question Card -->
+        <div class="bg-white rounded-lg shadow-lg p-8 mb-6 fade-in" id="questionCard">
+            <div class="text-center">
+                <div class="mb-4">
+                    <span class="inline-block bg-indigo-100 text-indigo-800 text-xs font-semibold px-3 py-1 rounded-full" id="questionTags"></span>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-4" id="questionText">Загрузка вопроса...</h2>
+                <p class="text-gray-500 italic mb-6" id="questionEng"></p>
+                
+                <!-- Hint Paragraph -->
+                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 text-left hidden" id="hintSection">
+                    <p class="text-sm text-gray-600 mb-2 font-semibold">Подсказка:</p>
+                    <p class="text-gray-700 text-sm" id="hintText"></p>
+                </div>
+
+                <!-- Answer Input -->
+                <div class="mb-6">
+                    <input 
+                        type="text" 
+                        id="answerInput" 
+                        placeholder="Введите ваш ответ..."
+                        class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-lg"
+                        onkeypress="if(event.key === 'Enter') checkAnswer()"
+                    >
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex gap-4 justify-center">
+                    <button 
+                        onclick="checkAnswer()" 
+                        id="submitBtn"
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 shadow-md hover:shadow-lg"
+                    >
+                        Проверить ответ
+                    </button>
+                    <button 
+                        onclick="loadNewQuestion()" 
+                        class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition duration-200 shadow-md hover:shadow-lg"
+                    >
+                        Следующий вопрос
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Card -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6 hidden fade-in" id="resultCard">
+            <div class="text-center">
+                <div id="resultIcon" class="text-6xl mb-4"></div>
+                <h3 class="text-2xl font-bold mb-2" id="resultTitle"></h3>
+                <p class="text-gray-600 mb-4" id="resultMessage"></p>
+                <p class="text-sm text-gray-500" id="correctAnswerText"></p>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div class="text-center hidden" id="loadingSpinner">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentQuestion = null;
+        let stats = {
+            score: 0,
+            total: 0,
+            correct: 0
+        };
+
+        // Загружаем первый вопрос при загрузке страницы
+        window.addEventListener('DOMContentLoaded', () => {
+            loadNewQuestion();
+        });
+
+        async function loadNewQuestion() {
+            // Показываем загрузку
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+            document.getElementById('questionCard').classList.add('hidden');
+            document.getElementById('resultCard').classList.add('hidden');
+            document.getElementById('answerInput').value = '';
+            document.getElementById('answerInput').disabled = false;
+            document.getElementById('submitBtn').disabled = false;
+
+            try {
+                const response = await fetch('/api/question/random');
+                const data = await response.json();
+                currentQuestion = data;
+
+                // Обновляем интерфейс
+                document.getElementById('questionText').textContent = data.question_text;
+                document.getElementById('questionEng').textContent = data.question_eng || '';
+                
+                // Показываем теги
+                if (data.tags && data.tags.length > 0) {
+                    document.getElementById('questionTags').textContent = data.tags.join(', ');
+                    document.getElementById('questionTags').classList.remove('hidden');
+                } else {
+                    document.getElementById('questionTags').classList.add('hidden');
+                }
+
+                // Показываем подсказку, если есть
+                if (data.hint_paragraph) {
+                    document.getElementById('hintText').textContent = data.hint_paragraph;
+                    document.getElementById('hintSection').classList.remove('hidden');
+                } else {
+                    document.getElementById('hintSection').classList.add('hidden');
+                }
+
+                // Скрываем загрузку и показываем карточку
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('questionCard').classList.remove('hidden');
+            } catch (error) {
+                console.error('Ошибка загрузки вопроса:', error);
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('questionText').textContent = 'Ошибка загрузки вопроса. Попробуйте обновить страницу.';
+                document.getElementById('questionCard').classList.remove('hidden');
+            }
+        }
+
+        async function checkAnswer() {
+            if (!currentQuestion) return;
+
+            const userAnswer = document.getElementById('answerInput').value.trim();
+            if (!userAnswer) {
+                alert('Пожалуйста, введите ответ');
+                return;
+            }
+
+            // Блокируем ввод
+            document.getElementById('answerInput').disabled = true;
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const response = await fetch(`/api/check-answer/${currentQuestion.uid}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ answer: userAnswer })
+                });
+
+                const result = await response.json();
+                
+                // Обновляем статистику
+                stats.total++;
+                if (result.correct) {
+                    stats.correct++;
+                    stats.score++;
+                }
+
+                updateStats();
+
+                // Показываем результат
+                showResult(result.correct, result.correct_answer);
+
+            } catch (error) {
+                console.error('Ошибка проверки ответа:', error);
+                alert('Ошибка при проверке ответа');
+                document.getElementById('answerInput').disabled = false;
+                document.getElementById('submitBtn').disabled = false;
+            }
+        }
+
+        function showResult(isCorrect, correctAnswer) {
+            const resultCard = document.getElementById('resultCard');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultMessage = document.getElementById('resultMessage');
+            const correctAnswerText = document.getElementById('correctAnswerText');
+
+            if (isCorrect) {
+                resultIcon.textContent = '✅';
+                resultIcon.className = 'text-6xl mb-4';
+                resultTitle.textContent = 'Правильно!';
+                resultTitle.className = 'text-2xl font-bold mb-2 text-green-600';
+                resultMessage.textContent = 'Отличная работа!';
+                resultMessage.className = 'text-gray-600 mb-4';
+            } else {
+                resultIcon.textContent = '❌';
+                resultIcon.className = 'text-6xl mb-4';
+                resultTitle.textContent = 'Неправильно';
+                resultTitle.className = 'text-2xl font-bold mb-2 text-red-600';
+                resultMessage.textContent = 'Попробуйте еще раз!';
+                resultMessage.className = 'text-gray-600 mb-4';
+            }
+
+            correctAnswerText.textContent = `Правильный ответ: ${correctAnswer}`;
+            resultCard.classList.remove('hidden');
+        }
+
+        function updateStats() {
+            document.getElementById('score').textContent = stats.score;
+            document.getElementById('total').textContent = stats.total;
+            const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+            document.getElementById('accuracy').textContent = accuracy + '%';
+        }
+    </script>
+</body>
+</html>
+
