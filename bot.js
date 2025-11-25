@@ -976,7 +976,8 @@ bot.onText(/\/start/, (msg) => {
             inline_keyboard: [
                 [{ text: '🎯 Начать викторину', callback_data: 'new_question' }],
                 [{ text: '📊 Моя статистика', callback_data: 'my_stats' }, { text: '🏆 Топ игроков', callback_data: 'top_players' }],
-                [{ text: '🎖️ Достижения', callback_data: 'my_achievements' }, { text: '❓ Помощь', callback_data: 'help' }]
+                [{ text: '🎖️ Достижения', callback_data: 'my_achievements' }, { text: '⚙️ Изменить сложность', callback_data: 'set_difficulty_menu' }],
+                [{ text: '❓ Помощь', callback_data: 'help' }]
             ]
         }
     };
@@ -1212,7 +1213,18 @@ bot.on('callback_query', (query) => {
                     'hard': '🔴 Сложные'
                 };
                 
-                bot.sendMessage(chatId, `✅ Уровень сложности изменен на: <b>${difficultyNames[difficulty]}</b>\n\nТеперь вам будут предлагаться вопросы выбранного уровня сложности.`, { parse_mode: 'HTML' });
+                const responseText = `✅ Уровень сложности изменен на: <b>${difficultyNames[difficulty]}</b>\n\nТеперь вам будут предлагаться вопросы выбранного уровня сложности.`;
+                
+                const returnKeyboard = {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🏠 Вернуться в меню', callback_data: 'main_menu' }],
+                            [{ text: '⚙️ Изменить сложность', callback_data: 'set_difficulty_menu' }]
+                        ]
+                    }
+                };
+                
+                bot.sendMessage(chatId, responseText, { ...returnKeyboard, parse_mode: 'HTML' });
             }
             break;
         }
@@ -1252,7 +1264,8 @@ bot.on('callback_query', (query) => {
                     inline_keyboard: [
                         [{ text: '🎯 Начать викторину', callback_data: 'new_question' }],
                         [{ text: '📊 Моя статистика', callback_data: 'my_stats' }, { text: '🏆 Топ игроков', callback_data: 'top_players' }],
-                        [{ text: '🎖️ Достижения', callback_data: 'my_achievements' }, { text: '❓ Помощь', callback_data: 'help' }]
+                        [{ text: '🎖️ Достижения', callback_data: 'my_achievements' }, { text: '⚙️ Изменить сложность', callback_data: 'set_difficulty_menu' }],
+                        [{ text: '❓ Помощь', callback_data: 'help' }]
                     ]
                 }
             };
