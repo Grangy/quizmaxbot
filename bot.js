@@ -1152,8 +1152,6 @@ bot.on('callback_query', (query) => {
             break;
         }
         case 'skip_question': {
-            // Очищаем таймер при пропуске вопроса
-            clearQuestionTimer(userId);
             if (userCurrentQuestions[userId]) {
                 delete userCurrentQuestions[userId];
             }
@@ -1251,8 +1249,6 @@ bot.on('callback_query', (query) => {
             break;
         }
         case 'main_menu': {
-            // Очищаем таймер при выходе в меню
-            clearQuestionTimer(userId);
             if (userCurrentQuestions[userId]) {
                 delete userCurrentQuestions[userId];
             }
@@ -1333,9 +1329,6 @@ bot.on('message', (msg) => {
         }
         
         const question = userCurrentQuestions[userId];
-        
-        // Очищаем таймер, так как пользователь ответил
-        clearQuestionTimer(userId);
         
         const result = checkAnswer(question, text);
         
