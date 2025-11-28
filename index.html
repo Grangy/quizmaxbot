@@ -20,79 +20,89 @@
         <!-- Header -->
         <div class="text-center mb-8 fade-in">
             <h1 class="text-5xl font-bold text-indigo-800 mb-2">RuBQ Quiz Bot</h1>
-            <p class="text-gray-600 text-lg">Тестовый бот для вопросов из RuBQ 2.0</p>
+            <p class="text-gray-600 text-lg">Тренировка по ЧГК-базе 4gk (вопросы с картинками)</p>
         </div>
 
-        <!-- Stats Card -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-6 fade-in">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="text-gray-600">Счет</p>
-                    <p class="text-3xl font-bold text-indigo-600" id="score">0</p>
-                </div>
-                <div>
-                    <p class="text-gray-600">Вопросов пройдено</p>
-                    <p class="text-3xl font-bold text-indigo-600" id="total">0</p>
-                </div>
-                <div>
-                    <p class="text-gray-600">Точность</p>
-                    <p class="text-3xl font-bold text-indigo-600" id="accuracy">0%</p>
+        <!-- 4gk: ЧГК с картинками -->
+        <div class="mt-12 border-t border-indigo-100 pt-8">
+            <div class="text-center mb-6 fade-in">
+                <h2 class="text-3xl font-bold text-indigo-800 mb-2">ЧГК 4gk (с картинками)</h2>
+                <p class="text-gray-600 text-md">Простая тренировка по базе <span class="font-semibold">4gk-base.andvarif.ru</span></p>
+            </div>
+
+            <!-- 4gk Stats -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6 fade-in">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-gray-600">Счет (4gk)</p>
+                        <p class="text-3xl font-bold text-indigo-600" id="g4kScore">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Вопросов пройдено</p>
+                        <p class="text-3xl font-bold text-indigo-600" id="g4kTotal">0</p>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Точность</p>
+                        <p class="text-3xl font-bold text-indigo-600" id="g4kAccuracy">0%</p>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Question Card -->
-        <div class="bg-white rounded-lg shadow-lg p-8 mb-6 fade-in" id="questionCard">
-            <div class="text-center">
-                <div class="mb-4">
-                    <span class="inline-block bg-indigo-100 text-indigo-800 text-xs font-semibold px-3 py-1 rounded-full" id="questionTags"></span>
-                </div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4" id="questionText">Загрузка вопроса...</h2>
-                <p class="text-gray-500 italic mb-6" id="questionEng"></p>
-                
-                <!-- Hint Paragraph -->
-                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 text-left hidden" id="hintSection">
-                    <p class="text-sm text-gray-600 mb-2 font-semibold">Подсказка:</p>
-                    <p class="text-gray-700 text-sm" id="hintText"></p>
+            <!-- 4gk Question Card -->
+            <div class="bg-white rounded-lg shadow-lg p-8 mb-6 fade-in" id="g4kQuestionCard">
+                <div class="mb-4 text-sm text-gray-500" id="g4kMeta"></div>
+
+                <h3 class="text-2xl font-bold text-gray-800 mb-4" id="g4kQuestionText">
+                    Загрузка вопроса 4gk...
+                </h3>
+
+                <!-- Image -->
+                <div class="mb-6 flex justify-center">
+                    <img id="g4kImage" alt="Раздаточный материал" class="max-h-96 rounded-lg shadow-md hidden">
                 </div>
 
                 <!-- Answer Input -->
                 <div class="mb-6">
                     <input 
                         type="text" 
-                        id="answerInput" 
-                        placeholder="Введите ваш ответ..."
+                        id="g4kAnswerInput" 
+                        placeholder="Ваш ответ на вопрос ЧГК..."
                         class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none text-lg"
-                        onkeypress="if(event.key === 'Enter') checkAnswer()"
+                        onkeypress="if(event.key === 'Enter') check4gkAnswer()"
                     >
                 </div>
 
                 <!-- Buttons -->
                 <div class="flex gap-4 justify-center">
                     <button 
-                        onclick="checkAnswer()" 
-                        id="submitBtn"
+                        onclick="check4gkAnswer()" 
+                        id="g4kSubmitBtn"
                         class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200 shadow-md hover:shadow-lg"
                     >
                         Проверить ответ
                     </button>
                     <button 
-                        onclick="loadNewQuestion()" 
+                        onclick="loadNew4gkQuestion()" 
                         class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition duration-200 shadow-md hover:shadow-lg"
                     >
                         Следующий вопрос
                     </button>
                 </div>
             </div>
-        </div>
 
-        <!-- Result Card -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-6 hidden fade-in" id="resultCard">
-            <div class="text-center">
-                <div id="resultIcon" class="text-6xl mb-4"></div>
-                <h3 class="text-2xl font-bold mb-2" id="resultTitle"></h3>
-                <p class="text-gray-600 mb-4" id="resultMessage"></p>
-                <p class="text-sm text-gray-500" id="correctAnswerText"></p>
+            <!-- 4gk Result Card -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6 hidden fade-in" id="g4kResultCard">
+                <div class="text-center">
+                    <div id="g4kResultIcon" class="text-6xl mb-4"></div>
+                    <h3 class="text-2xl font-bold mb-2" id="g4kResultTitle"></h3>
+                    <p class="text-gray-600 mb-4" id="g4kResultMessage"></p>
+                    <p class="text-sm text-gray-500" id="g4kCorrectAnswerText"></p>
+                </div>
+            </div>
+
+            <!-- 4gk Loading -->
+            <div class="text-center hidden" id="g4kLoadingSpinner">
+                <div class="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-600"></div>
             </div>
         </div>
 
@@ -103,139 +113,143 @@
     </div>
 
     <script>
-        let currentQuestion = null;
-        let stats = {
+        // Состояние для 4gk
+        let current4gkQuestion = null;
+        let stats4gk = {
             score: 0,
             total: 0,
             correct: 0
         };
 
-        // Загружаем первый вопрос при загрузке страницы
+        // Загружаем первый вопрос 4gk при загрузке страницы
         window.addEventListener('DOMContentLoaded', () => {
-            loadNewQuestion();
+            loadNew4gkQuestion();
         });
+        // --- 4gk: ЧГК с картинками ---
 
-        async function loadNewQuestion() {
-            // Показываем загрузку
-            document.getElementById('loadingSpinner').classList.remove('hidden');
-            document.getElementById('questionCard').classList.add('hidden');
-            document.getElementById('resultCard').classList.add('hidden');
-            document.getElementById('answerInput').value = '';
-            document.getElementById('answerInput').disabled = false;
-            document.getElementById('submitBtn').disabled = false;
+        async function loadNew4gkQuestion() {
+            const spinner = document.getElementById('g4kLoadingSpinner');
+            const card = document.getElementById('g4kQuestionCard');
+            const resultCard = document.getElementById('g4kResultCard');
+            const imgEl = document.getElementById('g4kImage');
+            const answerInput = document.getElementById('g4kAnswerInput');
+            const submitBtn = document.getElementById('g4kSubmitBtn');
+
+            spinner.classList.remove('hidden');
+            card.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            answerInput.value = '';
+            answerInput.disabled = false;
+            submitBtn.disabled = false;
+            imgEl.classList.add('hidden');
 
             try {
-                const response = await fetch('/api/question/random');
+                const response = await fetch('/api/4gk/random');
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
                 const data = await response.json();
-                currentQuestion = data;
+                current4gkQuestion = data;
 
-                // Обновляем интерфейс
-                document.getElementById('questionText').textContent = data.question_text;
-                document.getElementById('questionEng').textContent = data.question_eng || '';
-                
-                // Показываем теги
-                if (data.tags && data.tags.length > 0) {
-                    document.getElementById('questionTags').textContent = data.tags.join(', ');
-                    document.getElementById('questionTags').classList.remove('hidden');
+                document.getElementById('g4kQuestionText').textContent = data.text;
+                document.getElementById('g4kMeta').textContent =
+                    `Турнир: "${data.tournamentTitle}", тур ${data.tourNumber}, вопрос ${data.questionNumber}` +
+                    (data.difficulty ? `, сложность: ${data.difficulty}` : '');
+
+                if (data.imageUrl) {
+                    imgEl.src = data.imageUrl;
+                    imgEl.classList.remove('hidden');
                 } else {
-                    document.getElementById('questionTags').classList.add('hidden');
+                    imgEl.classList.add('hidden');
                 }
 
-                // Показываем подсказку, если есть
-                if (data.hint_paragraph) {
-                    document.getElementById('hintText').textContent = data.hint_paragraph;
-                    document.getElementById('hintSection').classList.remove('hidden');
-                } else {
-                    document.getElementById('hintSection').classList.add('hidden');
-                }
-
-                // Скрываем загрузку и показываем карточку
-                document.getElementById('loadingSpinner').classList.add('hidden');
-                document.getElementById('questionCard').classList.remove('hidden');
+                spinner.classList.add('hidden');
+                card.classList.remove('hidden');
             } catch (error) {
-                console.error('Ошибка загрузки вопроса:', error);
-                document.getElementById('loadingSpinner').classList.add('hidden');
-                document.getElementById('questionText').textContent = 'Ошибка загрузки вопроса. Попробуйте обновить страницу.';
-                document.getElementById('questionCard').classList.remove('hidden');
+                console.error('Ошибка загрузки 4gk вопроса:', error);
+                spinner.classList.add('hidden');
+                document.getElementById('g4kQuestionText').textContent =
+                    'Ошибка загрузки вопроса 4gk. Попробуйте обновить страницу.';
+                card.classList.remove('hidden');
             }
         }
 
-        async function checkAnswer() {
-            if (!currentQuestion) return;
+        async function check4gkAnswer() {
+            if (!current4gkQuestion) return;
 
-            const userAnswer = document.getElementById('answerInput').value.trim();
+            const answerInput = document.getElementById('g4kAnswerInput');
+            const submitBtn = document.getElementById('g4kSubmitBtn');
+            const userAnswer = answerInput.value.trim();
+
             if (!userAnswer) {
                 alert('Пожалуйста, введите ответ');
                 return;
             }
 
-            // Блокируем ввод
-            document.getElementById('answerInput').disabled = true;
-            document.getElementById('submitBtn').disabled = true;
+            answerInput.disabled = true;
+            submitBtn.disabled = true;
 
             try {
-                const response = await fetch(`/api/check-answer/${currentQuestion.uid}`, {
+                const response = await fetch(`/api/4gk/check-answer/${current4gkQuestion.id}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ answer: userAnswer })
                 });
 
                 const result = await response.json();
-                
-                // Обновляем статистику
-                stats.total++;
+
+                stats4gk.total++;
                 if (result.correct) {
-                    stats.correct++;
-                    stats.score++;
+                    stats4gk.correct++;
+                    stats4gk.score++;
                 }
-
-                updateStats();
-
-                // Показываем результат
-                showResult(result.correct, result.correct_answer);
-
+                update4gkStats();
+                show4gkResult(result.correct, result.correct_answer, result.alt_answers);
             } catch (error) {
-                console.error('Ошибка проверки ответа:', error);
-                alert('Ошибка при проверке ответа');
-                document.getElementById('answerInput').disabled = false;
-                document.getElementById('submitBtn').disabled = false;
+                console.error('Ошибка проверки 4gk ответа:', error);
+                alert('Ошибка при проверке ответа 4gk');
+                answerInput.disabled = false;
+                submitBtn.disabled = false;
             }
         }
 
-        function showResult(isCorrect, correctAnswer) {
-            const resultCard = document.getElementById('resultCard');
-            const resultIcon = document.getElementById('resultIcon');
-            const resultTitle = document.getElementById('resultTitle');
-            const resultMessage = document.getElementById('resultMessage');
-            const correctAnswerText = document.getElementById('correctAnswerText');
+        function show4gkResult(isCorrect, correctAnswer, altAnswers) {
+            const card = document.getElementById('g4kResultCard');
+            const icon = document.getElementById('g4kResultIcon');
+            const title = document.getElementById('g4kResultTitle');
+            const message = document.getElementById('g4kResultMessage');
+            const correctText = document.getElementById('g4kCorrectAnswerText');
 
             if (isCorrect) {
-                resultIcon.textContent = '✅';
-                resultIcon.className = 'text-6xl mb-4';
-                resultTitle.textContent = 'Правильно!';
-                resultTitle.className = 'text-2xl font-bold mb-2 text-green-600';
-                resultMessage.textContent = 'Отличная работа!';
-                resultMessage.className = 'text-gray-600 mb-4';
+                icon.textContent = '✅';
+                icon.className = 'text-6xl mb-4';
+                title.textContent = 'Правильно!';
+                title.className = 'text-2xl font-bold mb-2 text-green-600';
+                message.textContent = 'Отличный ответ!';
+                message.className = 'text-gray-600 mb-4';
             } else {
-                resultIcon.textContent = '❌';
-                resultIcon.className = 'text-6xl mb-4';
-                resultTitle.textContent = 'Неправильно';
-                resultTitle.className = 'text-2xl font-bold mb-2 text-red-600';
-                resultMessage.textContent = 'Попробуйте еще раз!';
-                resultMessage.className = 'text-gray-600 mb-4';
+                icon.textContent = '❌';
+                icon.className = 'text-6xl mb-4';
+                title.textContent = 'Неправильно';
+                title.className = 'text-2xl font-bold mb-2 text-red-600';
+                message.textContent = 'Попробуйте еще раз или возьмите следующий вопрос.';
+                message.className = 'text-gray-600 mb-4';
             }
 
-            correctAnswerText.textContent = `Правильный ответ: ${correctAnswer}`;
-            resultCard.classList.remove('hidden');
+            let text = `Правильный ответ: ${correctAnswer || '(нет данных)'}`;
+            if (altAnswers && String(altAnswers).trim()) {
+                text += ` (зачет: ${altAnswers})`;
+            }
+            correctText.textContent = text;
+
+            card.classList.remove('hidden');
         }
 
-        function updateStats() {
-            document.getElementById('score').textContent = stats.score;
-            document.getElementById('total').textContent = stats.total;
-            const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
-            document.getElementById('accuracy').textContent = accuracy + '%';
+        function update4gkStats() {
+            document.getElementById('g4kScore').textContent = stats4gk.score;
+            document.getElementById('g4kTotal').textContent = stats4gk.total;
+            const accuracy = stats4gk.total > 0 ? Math.round((stats4gk.correct / stats4gk.total) * 100) : 0;
+            document.getElementById('g4kAccuracy').textContent = accuracy + '%';
         }
     </script>
 </body>

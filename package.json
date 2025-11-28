@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node bot.js",
     "dev": "node bot.js",
-    "web": "node server.js"
+    "web": "node server.js",
+    "4gk:fetch": "node scripts/fetch_4gk.js"
   },
   "keywords": [
     "quiz",

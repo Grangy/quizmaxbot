@@ -14,6 +14,11 @@ data/
 # Allow RuBQ database files
 !RuBQ/**/*.json
 
+# Allow 4gk exported bases to be tracked
+!data/4gk_questions_all.json
+!data/4gk_questions_with_images.json
+!data/4gk_images/**
+
 # Logs
 *.log
 npm-debug.log*

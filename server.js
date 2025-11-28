@@ -10,8 +10,13 @@ app.use(express.json());
 // Загружаем данные из JSON файлов
 const DATA_DIR = path.join(__dirname, 'RuBQ', 'RuBQ_2.0');
 
+// Файл с вопросами 4gk и директория с картинками
+const FOURGK_JSON = path.join(__dirname, 'data', '4gk_questions_with_images.json');
+const FOURGK_IMAGES_DIR = path.join(__dirname, 'data', '4gk_images');
+
 let questions = [];
 let paragraphsDict = {};
+let fourgkQuestions = [];
 
 // Определение сложности вопросов по тегам (та же логика, что и в боте)
 const DIFFICULTY_TAGS = {
@@ -62,9 +67,33 @@ function loadParagraphs() {
     }
 }
 
+function load4gkQuestions() {
+    /** Загружает вопросы 4gk с картинками из заранее подготовленного JSON */
+    try {
+        const data = fs.readFileSync(FOURGK_JSON, 'utf8');
+        fourgkQuestions = JSON.parse(data);
+        console.log(`Загружено ${fourgkQuestions.length} вопросов 4gk с картинками`);
+    } catch (error) {
+        console.warn(`Предупреждение: не удалось загрузить 4gk вопросы из ${FOURGK_JSON}: ${error.message}`);
+        fourgkQuestions = [];
+    }
+}
+
+function normalizeAnswer(str) {
+    if (!str) return '';
+    let s = String(str).toLowerCase().trim();
+    // Убираем кавычки и точку/знаки в конце
+    s = s.replace(/^["'«»„“`]+/g, '').replace(/["'«»„“`]+$/g, '');
+    s = s.replace(/[.,!?;:]+$/g, '');
+    // Сжимаем повторяющиеся пробелы
+    s = s.replace(/\s+/g, ' ');
+    return s.trim();
+}
+
 // Загружаем данные при старте
 loadQuestions();
 loadParagraphs();
+load4gkQuestions();
 
 // Статические файлы
 app.use(express.static(__dirname));
@@ -138,6 +167,88 @@ app.get('/api/question/:uid', (req, res) => {
     };
     
     res.json(questionData);
+});
+
+// --- 4gk: вопросы ЧГК с картинками ---
+
+// Получить случайный вопрос 4gk с картинкой
+app.get('/api/4gk/random', (req, res) => {
+    if (!fourgkQuestions || fourgkQuestions.length === 0) {
+        return res.status(500).json({ error: 'Вопросы 4gk не загружены' });
+    }
+
+    const q = fourgkQuestions[Math.floor(Math.random() * fourgkQuestions.length)];
+
+    const imagePath = q.imageFile
+        ? `/data/4gk_images/${q.imageFile}`
+        : q.imageUrl;
+
+    res.json({
+        id: q.questionId,
+        text: q.text,
+        tournamentTitle: q.tournamentTitle,
+        tourNumber: q.tourNumber,
+        questionNumber: q.questionNumber,
+        imageUrl: imagePath,
+        difficulty: q.difficulty,
+        sourceLinks: q.sourceLinks || []
+    });
+});
+
+// Проверить ответ на вопрос 4gk
+app.post('/api/4gk/check-answer/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) {
+        return res.status(400).json({ error: 'Некорректный id вопроса' });
+    }
+
+    if (!fourgkQuestions || fourgkQuestions.length === 0) {
+        return res.status(500).json({ error: 'Вопросы 4gk не загружены' });
+    }
+
+    const question = fourgkQuestions.find(q => q.questionId === id);
+    if (!question) {
+        return res.status(404).json({ error: '4gk вопрос не найден' });
+    }
+
+    const userAnswerRaw = (req.body.answer || '').trim();
+    const userAnswer = normalizeAnswer(userAnswerRaw);
+    if (!userAnswer) {
+        return res.status(400).json({ error: 'Пустой ответ' });
+    }
+
+    const candidates = [];
+    if (question.answer) {
+        candidates.push(question.answer);
+    }
+    if (question.altAnswer) {
+        // Альтернативные ответы разделены ; или ,
+        const parts = String(question.altAnswer).split(/[;,]/);
+        parts.forEach(p => candidates.push(p));
+    }
+
+    const normalized = candidates
+        .map(a => normalizeAnswer(a))
+        .filter(a => a.length > 0);
+
+    let isCorrect = false;
+    let matched = null;
+
+    for (const cand of normalized) {
+        if (!cand) continue;
+        if (userAnswer === cand || userAnswer.includes(cand) || cand.includes(userAnswer)) {
+            isCorrect = true;
+            matched = cand;
+            break;
+        }
+    }
+
+    res.json({
+        correct: isCorrect,
+        correct_answer: question.answer || '',
+        alt_answers: question.altAnswer || '',
+        matched_answer: matched
+    });
 });
 
 // Проверить ответ

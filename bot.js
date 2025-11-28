@@ -88,28 +88,20 @@ function calculateRating(user) {
 // Функции для работы с БД
 function loadQuestions() {
     try {
-        const data = fs.readFileSync(path.join(DATA_DIR, 'RuBQ_2.0_test.json'), 'utf8');
+        // Загружаем вопросы ЧГК из предварительно собранной базы 4gk
+        const data = fs.readFileSync(path.join(DB_DIR, '4gk_questions_all.json'), 'utf8');
         questions = JSON.parse(data);
-        console.log(`✅ Загружено ${questions.length} вопросов`);
+        console.log(`✅ Загружено ${questions.length} вопросов 4gk`);
     } catch (error) {
-        console.error('❌ Ошибка загрузки вопросов:', error.message);
+        console.error('❌ Ошибка загрузки вопросов 4gk:', error.message);
         questions = [];
     }
 }
 
 function loadParagraphs() {
-    try {
-        const data = fs.readFileSync(path.join(DATA_DIR, 'RuBQ_2.0_paragraphs.json'), 'utf8');
-        const paragraphs = JSON.parse(data);
-        paragraphsDict = {};
-        paragraphs.forEach(p => {
-            paragraphsDict[p.uid] = p;
-        });
-        console.log(`✅ Загружено ${paragraphs.length} параграфов`);
-    } catch (error) {
-        console.warn('⚠️ Параграфы не загружены');
-        paragraphsDict = {};
-    }
+    // В версии с базой 4gk не используем параграфы RuBQ,
+    // но оставляем функцию-заглушку, чтобы не ломать логику загрузки.
+    paragraphsDict = {};
 }
 
 function loadUsers() {
@@ -494,36 +486,23 @@ function logAnswer(userId, questionId, userAnswer, isCorrect, correctAnswer, cha
 }
 
 // ========== УЛУЧШЕНИЕ 10: Умный выбор вопросов (избегание повторов) ==========
-// Определение сложности вопросов по тегам
-const DIFFICULTY_TAGS = {
-    easy: ['1-hop', '0-hop'], // Простые вопросы
-    medium: ['multi-constraint', 'qualifier-constraint', 'reverse', 'exclusion'], // Средние вопросы
-    hard: ['multi-hop', 'count', 'ranking', 'duration', 'no_answer', 'qualifier-answer'] // Сложные вопросы
-};
 
+// Определение сложности вопросов для базы 4gk:
+// используем числовую сложность турнира (difficulty) и маппим в easy/medium/hard
 function getQuestionDifficulty(question) {
-    if (!question.tags || question.tags.length === 0) {
-        return 'medium'; // По умолчанию средняя сложность
-    }
-    
-    const tags = question.tags;
-    
-    // Проверяем сложные теги
-    if (tags.some(tag => DIFFICULTY_TAGS.hard.includes(tag))) {
-        return 'hard';
-    }
-    
-    // Проверяем средние теги
-    if (tags.some(tag => DIFFICULTY_TAGS.medium.includes(tag))) {
+    const raw = question && question.difficulty;
+    const num = typeof raw === 'number' ? raw : parseFloat(raw);
+    if (Number.isNaN(num)) {
         return 'medium';
     }
-    
-    // Проверяем простые теги
-    if (tags.some(tag => DIFFICULTY_TAGS.easy.includes(tag))) {
+    // Примерная шкала: < 4 — лёгкий, 4–5.2 — средний, > 5.2 — сложный
+    if (num < 4) {
         return 'easy';
     }
-    
-    return 'medium'; // По умолчанию
+    if (num <= 5.2) {
+        return 'medium';
+    }
+    return 'hard';
 }
 
 function getRandomQuestion(userId) {
@@ -540,7 +519,7 @@ function getRandomQuestion(userId) {
     
     // Фильтруем уже заданные вопросы (последние 50)
     const recentQuestions = questionHistory[userId].slice(-50);
-    let availableQuestions = questions.filter(q => !recentQuestions.includes(q.uid));
+    let availableQuestions = questions.filter(q => !recentQuestions.includes(q.questionId));
     
     // Всегда строго фильтруем по выбранной сложности, если не "all"
     if (difficulty !== 'all') {
@@ -578,13 +557,55 @@ function getRandomQuestion(userId) {
     const question = questionPool[Math.floor(Math.random() * questionPool.length)];
     
     // Добавляем в историю
-    questionHistory[userId].push(question.uid);
+    questionHistory[userId].push(question.questionId);
     if (questionHistory[userId].length > 100) {
         questionHistory[userId] = questionHistory[userId].slice(-100);
     }
     saveQuestionHistory();
     
     return question;
+}
+
+function normalizeAnswer(str) {
+    if (!str) return '';
+    let s = String(str).toLowerCase().trim();
+    // Убираем кавычки и лишние знаки препинания по краям
+    s = s.replace(/^["'«»„“`]+/g, '').replace(/["'«»„“`]+$/g, '');
+    s = s.replace(/[.,!?;:]+$/g, '');
+    // Сжимаем пробелы
+    s = s.replace(/\s+/g, ' ');
+    return s.trim();
+}
+
+function checkAnswer(question, userAnswer) {
+    const userAns = normalizeAnswer(userAnswer);
+    if (!userAns) {
+        return { isCorrect: false, correctAnswer: question.answer || '' };
+    }
+    
+    const candidates = [];
+    
+    if (question.answer) {
+        candidates.push(question.answer);
+    }
+    
+    if (question.altAnswer) {
+        const parts = String(question.altAnswer).split(/[;,]/);
+        parts.forEach(p => candidates.push(p));
+    }
+    
+    const normalized = candidates
+        .map(a => normalizeAnswer(a))
+        .filter(a => a.length > 0);
+    
+    for (const correct of normalized) {
+        if (!correct) continue;
+        if (userAns === correct || userAns.includes(correct) || correct.includes(userAns)) {
+            return { isCorrect: true, correctAnswer: question.answer || correct };
+        }
+    }
+    
+    return { isCorrect: false, correctAnswer: question.answer || '' };
 }
 
 function checkAnswer(question, userAnswer) {
@@ -768,7 +789,7 @@ function updateUserStats(userId, isCorrect, chatId, question = null) {
     results[userId].push({
         date: new Date().toISOString(),
         isCorrect,
-        questionId: user.currentQuestionId,
+                    questionId: user.currentQuestionId,
         chatId,
         difficulty: questionDifficulty // Сохраняем сложность вопроса
     });
@@ -867,14 +888,10 @@ function getUserStats(userId) {
 
 // Хранилище текущих вопросов пользователей
 const userCurrentQuestions = {};
-// Хранилище последних отвеченных вопросов (для показа параграфов)
+// Хранилище последних отвеченных вопросов (для показа комментариев/источников)
 const userLastAnsweredQuestions = {};
-// Хранилище текущих индексов параграфов для пользователей
+// Хранилище текущих индексов параграфов для пользователей (для совместимости со старой логикой)
 const userParagraphIndices = {};
-// Хранилище таймеров для вопросов (25 секунд)
-const questionTimers = {};
-const QUESTION_TIME_LIMIT = 25000; // 25 секунд в миллисекундах
-const WARNING_TIME = 15000; // Предупреждение за 10 секунд до окончания (15 секунд)
 
 // Загружаем данные при старте
 loadQuestions();
@@ -955,9 +972,9 @@ bot.onText(/\/start/, (msg) => {
     
     const welcomeText = `👋 Привет, ${user.firstName || 'друг'}!
 
-🎯 Я бот для викторины RuBQ 2.0!
+🎯 Я бот для викторины по вопросам ЧГК (база 4gk).
 
-📚 Я задаю вопросы из базы знаний, а ты отвечаешь.
+📚 Я задаю вопросы из базы турниров, а ты отвечаешь.
 📊 Ты можешь решить до 30 вопросов в день.
 
 🎮 Используй команды:
@@ -1249,9 +1266,9 @@ bot.on('callback_query', (query) => {
             const userForMenu = users[userId];
             const welcomeText = `👋 Привет, ${userForMenu ? (userForMenu.firstName || 'друг') : 'друг'}!
 
-🎯 Я бот для викторины RuBQ 2.0!
+🎯 Я бот для викторины по вопросам ЧГК (база 4gk).
 
-📚 Я задаю вопросы из базы знаний, а ты отвечаешь.
+📚 Я задаю вопросы из базы турниров, а ты отвечаешь.
 📊 Ты можешь решить до 30 вопросов в день.
 
 🎮 Используй команды:
@@ -1326,7 +1343,7 @@ bot.on('message', (msg) => {
         const updateResult = updateUserStats(userId, result.isCorrect, chatId, question);
         const leveledUp = updateResult.leveledUp;
         const questionDifficulty = updateResult.difficulty;
-        logAnswer(userId, question.uid, text, result.isCorrect, result.correctAnswer, chatId);
+        logAnswer(userId, question.questionId, text, result.isCorrect, result.correctAnswer, chatId);
         
         // ========== УЛУЧШЕНИЕ 16: Проверка достижений ==========
         const newAchievements = checkAchievements(userId);
@@ -1433,24 +1450,8 @@ bot.on('message', (msg) => {
     }
 });
 
-// Функция очистки таймера для пользователя
-function clearQuestionTimer(userId) {
-    if (questionTimers[userId]) {
-        if (questionTimers[userId].mainTimer) {
-            clearTimeout(questionTimers[userId].mainTimer);
-        }
-        if (questionTimers[userId].warningTimer) {
-            clearTimeout(questionTimers[userId].warningTimer);
-        }
-        delete questionTimers[userId];
-    }
-}
-
 function sendQuestion(chatId, userId) {
     registerUser({ from: { id: userId, first_name: '', last_name: '', username: '' }, chat: { id: chatId, type: 'private' } });
-    
-    // Очищаем предыдущий таймер если есть
-    clearQuestionTimer(userId);
     
     const question = getRandomQuestion(userId);
     if (!question) {
@@ -1459,9 +1460,9 @@ function sendQuestion(chatId, userId) {
     }
     
     userCurrentQuestions[userId] = question;
-    users[userId].currentQuestionId = question.uid;
+    users[userId].currentQuestionId = question.questionId;
     
-    let questionText = `❓ <b>Вопрос:</b>\n\n${question.question_text}\n\n💬 Напишите ваш ответ:\n\n⏱️ <b>У вас 25 секунд!</b>`;
+    let questionText = `❓ <b>Вопрос:</b>\n\n${question.text}\n\n💬 Напишите ваш ответ:`;
     
     const keyboard = {
         reply_markup: {
@@ -1473,95 +1474,6 @@ function sendQuestion(chatId, userId) {
     };
     
     bot.sendMessage(chatId, questionText, { ...keyboard, parse_mode: 'HTML' });
-    
-    // Запускаем предупреждение за 10 секунд до окончания
-    questionTimers[userId] = {};
-    questionTimers[userId].warningTimer = setTimeout(() => {
-        if (userCurrentQuestions[userId]) {
-            bot.sendMessage(chatId, '⚠️ <b>Осталось 10 секунд!</b> Успейте ответить!', { parse_mode: 'HTML' });
-        }
-    }, WARNING_TIME);
-    
-    // Запускаем основной таймер на 25 секунд
-    questionTimers[userId].mainTimer = setTimeout(() => {
-        if (userCurrentQuestions[userId]) {
-            // Время истекло
-            const expiredQuestion = userCurrentQuestions[userId];
-            delete userCurrentQuestions[userId];
-            clearQuestionTimer(userId);
-            
-            // Показываем правильный ответ
-            let displayAnswer = expiredQuestion.answer_text || '';
-            if (!displayAnswer && expiredQuestion.answers && expiredQuestion.answers.length > 0) {
-                const firstAnswer = expiredQuestion.answers[0];
-                if (firstAnswer.type === 'uri' && firstAnswer.label) {
-                    displayAnswer = firstAnswer.label;
-                } else if (firstAnswer.type === 'literal' && firstAnswer.value !== undefined) {
-                    displayAnswer = String(firstAnswer.value);
-                }
-            }
-            
-            // Определяем сложность вопроса
-            const questionDifficulty = getQuestionDifficulty(expiredQuestion);
-            const difficultyNames = {
-                'easy': '🟢 Легкий',
-                'medium': '🟡 Средний',
-                'hard': '🔴 Сложный'
-            };
-            
-            let responseText = `⏱️ <b>Время истекло!</b>\n\n❌ Ответ не засчитан.\n\n📊 Правильный ответ: <b>${displayAnswer}</b>`;
-            responseText += `\n\n📊 <b>Сложность вопроса:</b> ${difficultyNames[questionDifficulty]}`;
-            responseText += `\n⏱️ Время истекло - опыт и рейтинг не начислены`;
-            
-            // Сохраняем вопрос для возможности показать подробности
-            userLastAnsweredQuestions[userId] = expiredQuestion;
-            userParagraphIndices[userId] = 0;
-            
-            // Сохраняем результат с учетом сложности (но без награды, так как время истекло)
-            if (users[userId]) {
-                users[userId].totalQuestions++;
-                if (!results[userId]) {
-                    results[userId] = [];
-                }
-                results[userId].push({
-                    date: new Date().toISOString(),
-                    isCorrect: false,
-                    questionId: expiredQuestion.uid,
-                    chatId,
-                    difficulty: questionDifficulty,
-                    timeout: true
-                });
-                saveResults();
-                saveUsers();
-            }
-            
-            // Проверяем, есть ли параграфы для этого вопроса
-            const hasParagraphs = expiredQuestion.paragraphs_uids && 
-                                  expiredQuestion.paragraphs_uids.with_answer && 
-                                  expiredQuestion.paragraphs_uids.with_answer.length > 0;
-            
-            const keyboard = {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '➡️ Следующий вопрос', callback_data: 'new_question' }],
-                        [{ text: '📊 Моя статистика', callback_data: 'my_stats' }, { text: '🏆 Топ игроков', callback_data: 'top_players' }]
-                    ]
-                }
-            };
-            
-            // Добавляем кнопку "Подробнее о вопросе" если есть параграфы
-            if (hasParagraphs) {
-                keyboard.reply_markup.inline_keyboard.push([
-                    { text: '📖 Подробнее о вопросе', callback_data: 'show_paragraphs' }
-                ]);
-            }
-            
-            bot.sendMessage(chatId, responseText, { ...keyboard, parse_mode: 'HTML' });
-            
-            // Логируем истечение времени
-            logAnswer(userId, expiredQuestion.uid, 'TIMEOUT', false, displayAnswer, chatId);
-        }
-    }, QUESTION_TIME_LIMIT);
 }
 
 function showUserStats(chatId, userId) {
@@ -1673,23 +1585,37 @@ setInterval(() => {
 function showQuestionParagraphs(chatId, userId) {
     const question = userLastAnsweredQuestions[userId];
     
-    if (!question || !question.paragraphs_uids) {
+    if (!question) {
         bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
         return;
     }
     
-    const withAnswerUids = question.paragraphs_uids.with_answer || [];
+    let text = '📖 <b>Подробнее о вопросе</b>\n\n';
     
-    if (withAnswerUids.length === 0) {
-        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
-        return;
+    if (question.comment) {
+        text += `${question.comment}\n\n`;
+    } else {
+        text += 'Комментарий к этому вопросу отсутствует.\n\n';
     }
     
-    // Сбрасываем индекс на первый параграф
-    userParagraphIndices[userId] = 0;
+    if (question.sourceLinks && question.sourceLinks.length > 0) {
+        text += '<b>Источники:</b>\n';
+        question.sourceLinks.forEach((link, idx) => {
+            text += `${idx + 1}. ${link}\n`;
+        });
+    } else {
+        text += 'Источники не указаны.';
+    }
     
-    // Показываем первый параграф
-    showParagraphByIndex(chatId, userId, withAnswerUids, 0);
+    const keyboard = {
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🏠 Выйти в меню', callback_data: 'main_menu' }]
+            ]
+        }
+    };
+    
+    bot.sendMessage(chatId, text, { ...keyboard, parse_mode: 'HTML' });
 }
 
 function showParagraphByIndex(chatId, userId, paraUids, index) {
@@ -1749,57 +1675,13 @@ function showParagraphByIndex(chatId, userId, paraUids, index) {
 }
 
 function showNextParagraph(chatId, userId) {
-    const question = userLastAnsweredQuestions[userId];
-    
-    if (!question || !question.paragraphs_uids) {
-        bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
-        return;
-    }
-    
-    const withAnswerUids = question.paragraphs_uids.with_answer || [];
-    
-    if (withAnswerUids.length === 0) {
-        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
-        return;
-    }
-    
-    let currentIndex = userParagraphIndices[userId] || 0;
-    currentIndex++;
-    
-    if (currentIndex >= withAnswerUids.length) {
-        bot.sendMessage(chatId, '✅ Это последний параграф.');
-        return;
-    }
-    
-    userParagraphIndices[userId] = currentIndex;
-    showParagraphByIndex(chatId, userId, withAnswerUids, currentIndex);
+    // Для базы 4gk нескольких параграфов нет — просто повторно показываем комментарий/источники
+    showQuestionParagraphs(chatId, userId);
 }
 
 function showPrevParagraph(chatId, userId) {
-    const question = userLastAnsweredQuestions[userId];
-    
-    if (!question || !question.paragraphs_uids) {
-        bot.sendMessage(chatId, '❌ Информация о вопросе недоступна.');
-        return;
-    }
-    
-    const withAnswerUids = question.paragraphs_uids.with_answer || [];
-    
-    if (withAnswerUids.length === 0) {
-        bot.sendMessage(chatId, '❌ Для этого вопроса нет дополнительной информации.');
-        return;
-    }
-    
-    let currentIndex = userParagraphIndices[userId] || 0;
-    currentIndex--;
-    
-    if (currentIndex < 0) {
-        bot.sendMessage(chatId, '✅ Это первый параграф.');
-        return;
-    }
-    
-    userParagraphIndices[userId] = currentIndex;
-    showParagraphByIndex(chatId, userId, withAnswerUids, currentIndex);
+    // Для базы 4gk нескольких параграфов нет — просто повторно показываем комментарий/источники
+    showQuestionParagraphs(chatId, userId);
 }
 
 // Обработка ошибок
