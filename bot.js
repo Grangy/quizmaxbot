@@ -1473,7 +1473,25 @@ function sendQuestion(chatId, userId) {
         }
     };
     
-    bot.sendMessage(chatId, questionText, { ...keyboard, parse_mode: 'HTML' });
+    const opts = { ...keyboard, parse_mode: 'HTML' };
+
+    // Если у вопроса есть картинка (локальный файл или URL) — отправляем как фото с подписью
+    if (question.imageFile || question.imageUrl) {
+        let photoSource = null;
+        if (question.imageFile) {
+            photoSource = path.join(DB_DIR, '4gk_images', question.imageFile);
+        } else {
+            photoSource = question.imageUrl;
+        }
+
+        bot.sendPhoto(chatId, photoSource, {
+            caption: questionText,
+            parse_mode: 'HTML',
+            reply_markup: opts.reply_markup
+        });
+    } else {
+        bot.sendMessage(chatId, questionText, opts);
+    }
 }
 
 function showUserStats(chatId, userId) {
